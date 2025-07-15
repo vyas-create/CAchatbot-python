@@ -634,8 +634,8 @@ async def verify_razorpay_payment():
 # async def custom_signin():
 #     return jsonify({"error": "Custom signin disabled (Firestore removed for testing)."}), 501
 
-# --- Run the Flask app (UNCOMMENTED FOR LOCAL DEVELOPMENT) ---
-# When deploying to App Engine, Gunicorn (specified in app.yaml) will run your app.
+# --- Run the Flask app (COMMENTED OUT FOR DEPLOYMENT) ---
+# When deploying to Render, Gunicorn (specified in Procfile) will run your app.
 # This block is only for local development.
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+# if __name__ == '__main__':
+#     app.run(debug=True, port=5000)
