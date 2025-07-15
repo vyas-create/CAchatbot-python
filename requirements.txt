@@ -1,0 +1,6 @@
+Flask[async] # Changed this line
+PyPDF2
+python-dotenv
+chromadb
+google-generativeai
+Flask-CORS

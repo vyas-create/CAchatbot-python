@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat CA - Your CA Companion</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Marked.js for Markdown parsing in bot responses -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Google Fonts: Urbanist for headings, Plus Jakarta Sans for body -->
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- Razorpay Checkout Script (COMMENTED OUT FOR NOW) -->
+    <!-- <script src="https://checkout.razorpay.com/v1/checkout.js"></script> -->
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: linear-gradient(to bottom right, #fdfbfb, #ebedee); /* Light gradient background */
+            color: #1e293b; /* Dark text color */
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden; /* Prevent horizontal scroll */
+            scroll-behavior: smooth; /* Enable smooth scrolling for all links */
+        }
+        h1, h2, h3, h4, .font-display {
+            font-family: 'Urbanist', sans-serif;
+        }
+        /* Glassmorphism effect */
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(14px);
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+        /* CTA Button Styling */
+        .cta-button {
+            transition: all 0.3s ease;
+        }
+        .cta-button:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Navigation styles */
+        .nav-link {
+            padding: 0.5rem 1rem;
+            border-radius: 9999px; /* rounded-full */
+            transition: background-color 0.3s ease, color 0.3s ease, transform 0.1s ease;
+            font-weight: 600;
+            color: white; /* White text for nav links */
+        }
+        .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.2); /* Lighter hover */
+            transform: translateY(-2px);
+        }
+        /* Page content sections */
+        .page-section {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh; /* Ensure sections take full viewport height */
+            padding-top: 80px; /* Offset for sticky header */
+            box-sizing: border-box;
+        }
+
+        /* Chatbot specific styles (adapted for new design) */
+        .chatbot-container {
+            width: 90%;
+            max-width: 800px; /* Increased max-width */
+            height: 85vh; /* Increased height */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            /* Inherits glassmorphism from parent wrapper */
+        }
+        .chat-history {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            background-color: #fcfcfc; /* Very light background for chat history */
+        }
+        .chat-message {
+            max-width: 85%;
+            padding: 0.75rem 1rem;
+            border-radius: 1rem;
+            word-wrap: break-word;
+            line-height: 1.5;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .user-message {
+            background-color: #3b82f6; /* Blue */
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 0.25rem;
+        }
+        .bot-message {
+            background-color: #e0f2fe; /* Light blue */
+            color: #1e40af; /* Darker blue */
+            align-self: flex-start;
+            border-bottom-left-radius: 0.25rem;
+        }
+        .chat-input-area {
+            display: flex;
+            padding: 1rem;
+            border-top: 1px solid #e2e8f0;
+            background-color: #ffffff;
+        }
+        .chat-input-area input {
+            flex-grow: 1;
+            padding: 0.75rem 1rem;
+            border: 1px solid #cbd5e0;
+            border-radius: 9999px; /* Pill shape */
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .chat-input-area input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+        .chat-input-area button {
+            margin-left: 0.75rem;
+            background-color: #3b82f6;
+            color: white;
+            padding: 0.75rem 1.25rem;
+            border-radius: 9999px; /* Pill shape */
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        .chat-input-area button:hover {
+            background-color: #2563eb;
+        }
+        .chat-input-area button:disabled {
+            background-color: #93c5fd; /* light blue */
+            cursor: not-allowed;
+        }
+
+        /* Sign-in prompt specific styles (adapted for new design) */
+        .signin-prompt {
+            padding: 2rem;
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+            /* Inherits glassmorphism from parent wrapper */
+        }
+
+        /* Styles for Markdown tables within bot messages */
+        .bot-message table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            background-color: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .bot-message th, .bot-message td {
+            border: 1px solid #e2e8f0;
+            padding: 10px 15px;
+            text-align: left;
+        }
+        .bot-message th {
+            background-color: #f1f5f9;
+            font-weight: bold;
+            color: #333;
+        }
+        .bot-message tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+        .bot-message table th:first-child,
+        .bot-message table td:first-child { border-left: none; }
+        .bot-message table th:last-child,
+        .bot-message table td:last-child { border-right: none; }
+        .bot-message table tr:first-child th { border-top: none; }
+        .bot-message table tr:last-child td { border-bottom: none; }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            width: 90%;
+            max-width: 450px;
+            text-align: center;
+            position: relative;
+        }
+        .modal-close-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #6b7280;
+        }
+        .modal-input {
+            width: 100%;
+            padding: 0.75rem;
+            margin-bottom: 1rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+        }
+        .modal-button {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        .modal-button.primary {
+            background-color: #3b82f6;
+            color: white;
+        }
+        .modal-button.primary:hover {
+            background-color: #2563eb;
+        }
+        .modal-button.secondary {
+            background-color: #e5e7eb;
+            color: #374151;
+            margin-top: 0.75rem;
+        }
+        .modal-button.secondary:hover {
+            background-color: #d1d5db;
+        }
+        .modal-message {
+            margin-top: 1rem;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+            display: none;
+        }
+        .modal-message.error {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+        .modal-message.success {
+            background-color: #dcfce7;
+            color: #166534;
+        }
+    </style>
+</head>
+<body class="overflow-x-hidden">
+    <!-- Header -->
+    <header class="sticky top-0 z-50 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="text-white font-display text-2xl font-bold tracking-wide">
+                <span class="bg-white text-indigo-600 px-2 py-1 rounded-xl shadow-sm">Chat</span> CA
+            </div>
+            <nav class="space-x-6">
+                <a href="#home" class="nav-link">Home</a>
+                <a href="#chatbot" class="nav-link">Chatbot</a>
+                <a href="#pricing" class="nav-link">Pricing</a>
+                <a href="#about" class="nav-link">About Us</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Home Section -->
+    <section id="home" class="page-section text-center px-6 bg-gradient-to-br from-white via-purple-50 to-pink-50">
+        <div class="max-w-4xl">
+            <h1 class="text-5xl md:text-6xl font-extrabold font-display text-gray-900 leading-tight mb-6">CA is hard, <span class="text-indigo-600">But I’m your friend. Here’s my gift.</span></h1>
+            <p class="text-xl text-gray-700 mb-10">I'm Chat CA — Get instant answers, study help, and motivation — anytime, anywhere. </p>
+            <div class="flex flex-wrap justify-center gap-6">
+                <a href="#chatbot" class="cta-button bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-full font-semibold text-lg shadow-xl">Start Chatting</a>
+                <a href="#pricing" class="cta-button bg-white hover:bg-gray-100 text-indigo-600 px-8 py-4 rounded-full font-semibold text-lg border-2 border-indigo-600">See Pricing</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Chatbot Section -->
+    <section id="chatbot" class="page-section py-24 px-4 bg-white text-center">
+        <h2 class="text-4xl font-bold font-display mb-8 text-gray-900">Chat With Your Assistant</h2>
+        <p class="text-lg text-gray-600 max-w-2xl mx-auto mb-10">Made by Students, for Students.</p>
+        <div class="max-w-3xl mx-auto glass p-6 w-full">
+            <!-- Sign-in Prompt (initially visible) -->
+            <div id="chatbotSignInPrompt" class="signin-prompt flex flex-col items-center justify-center z-10">
+                <h3 class="text-2xl font-bold text-gray-800 mb-4">Sign In to Start Chatting</h3>
+                <p class="text-gray-600 mb-6">Access our intelligent chatbot by signing in. It's quick and easy!</p>
+                <button id="signInButton" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full text-lg shadow-lg transform hover:scale-105 transition duration-300 ease-in-out">
+                    Sign In
+                </button>
+            </div>
+
+            <!-- Placeholder for Chatbot Interface (loaded dynamically) -->
+            <div id="chatbotDynamicContent" class="hidden"></div>
+            <!-- Premium Status Display -->
+            <div id="premiumStatusDisplay" class="mt-4 text-sm text-gray-600 font-semibold"></div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="page-section py-24 px-4 bg-gradient-to-br from-pink-50 to-purple-100 text-center">
+        <h2 class="text-4xl font-bold font-display mb-4 text-gray-900">We are poor, But with a Big Heart</h2>
+        <p class="text-lg text-gray-600 mb-10">“Life is simple. So is our pricing.” </p>
+
+        <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto w-full">
+            <div class="bg-white rounded-2xl p-8 shadow-lg flex flex-col items-center">
+                <h3 class="text-2xl font-bold text-indigo-600 mb-4">Free Plan</h3>
+                <p class="text-5xl font-extrabold text-gray-900 mb-2">₹0</p>
+                <p class="text-sm text-gray-500 mb-6">lifetime</p>
+                <ul class="text-gray-700 mb-6 space-y-2 text-left w-full max-w-xs">
+                    <li class="flex items-center">✅ 10 Questions (lifetime)</li>
+                    <li class="flex items-center">🚫 No Priority Support</li>
+                </ul>
+                <button id="currentPlanButton" class="bg-gray-200 text-gray-800 font-semibold px-6 py-3 rounded-full mt-auto">Current Plan</button>
+            </div>
+
+            <div class="bg-indigo-600 text-white rounded-2xl p-8 shadow-xl relative flex flex-col items-center">
+                <div class="absolute top-0 right-0 bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded-bl-xl">Popular</div>
+                <h3 class="text-2xl font-bold mb-4">Premium Plan</h3>
+                <p class="text-5xl font-extrabold mb-2">₹50</p>
+                <p class="text-sm mb-6">per 500 questions</p>
+                <ul class="mb-6 space-y-2 text-left w-full max-w-xs">
+                    <li>✅ 500 Questions</li>
+                    <li>⚡ Priority Access</li>
+                </ul>
+                <!-- Upgrade Button (HIDDEN FOR NOW) -->
+                <button id="upgradeButton" class="bg-white text-indigo-700 font-semibold px-6 py-3 rounded-full hover:bg-gray-100 mt-auto hidden">Upgrade Now</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Us Section -->
+    <section id="about" class="page-section py-24 px-4 bg-gradient-to-br from-white via-purple-50 to-pink-50 text-center">
+        <div class="max-w-3xl mx-auto glass p-8">
+            <h2 class="text-4xl font-bold font-display mb-6 text-gray-900">About Us</h2>
+            <p class="text-lg text-gray-700 mb-4">
+                Chat CA was founded with a simple mission: to make the challenging journey of Chartered Accountancy a little easier and a lot more supportive for students.
+            </p>
+            <p class="text-lg text-gray-700 mb-6">
+                Our goal is to provide an intelligent, friendly AI companion that offers instant answers, guidance, and motivation, helping you navigate your studies with confidence.
+            </p>
+            <p class="text-xl font-semibold text-gray-800 mb-2">
+                Founder: Sanjay Avyukth Vyas
+            </p>
+            <p class="text-lg text-gray-700">
+                Contact: <a href="mailto:vyasavyukthacquisition@gmail.com" class="text-indigo-600 hover:underline">vyasavyukthacquisition@gmail.com</a>
+            </p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="text-center py-8 text-sm text-gray-500">
+        Built with ❤️ for CA Students by Chat CA. All rights reserved © 2025
+    </footer>
+
+    <!-- Custom Authentication Modal -->
+    <div id="authModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button class="modal-close-button" id="closeModalBtn">&times;</button>
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">Do I know you?</h3>
+            <div id="authMessage" class="modal-message"></div>
+
+            <input type="text" id="authNameInput" placeholder="Your Name (for Sign Up)" class="modal-input hidden">
+            <input type="tel" id="authMobileInput" placeholder="Mobile Number (e.g., 9876543210)" class="modal-input" pattern="[0-9]{10}" maxlength="10" required>
+            <input type="password" id="authPasskeyInput" placeholder="4-Digit Passkey" class="modal-input" pattern="[0-9]{4}" maxlength="4" required>
+
+            <button id="modalSignInBtn" class="modal-button primary">Sign In</button>
+            <button id="modalSignUpBtn" class="modal-button secondary">Sign Up</button>
+        </div>
+    </div>
+
+    <script>
+        // Marked.js is now available globally for rendering Markdown in bot responses
+
+        // --- Global variables and DOM elements for Chatbot ---
+        const chatbotSignInPrompt = document.getElementById('chatbotSignInPrompt');
+        const signInButton = document.getElementById('signInButton');
+        const chatbotDynamicContent = document.getElementById('chatbotDynamicContent');
+        const premiumStatusDisplay = document.getElementById('premiumStatusDisplay');
+        const upgradeButton = document.getElementById('upgradeButton'); // Still exists but hidden/disabled
+
+        let chatHistoryElement, chatInput, sendChatButton; // These will be assigned after dynamic load
+
+        // Chat history array for sending to backend
+        let chatHistory = [];
+        
+        // User ID from backend (Firestore document ID)
+        let userId = localStorage.getItem('chatCaUserId'); // Load persisted user ID
+        
+        // Current selected CA Level for chatbot context
+        let currentCaLevel = "Unspecified"; // Default value
+
+        // Flags to track if content sections have been loaded
+        let chatbotContentLoaded = false;
+        let isSignedIn = !!userId; // True if userId exists in localStorage
+        let isPremiumUser = false; // Always false for now, as premium is disabled
+        let questionsUsedFreeTier = 0; // Track lifetime free questions used
+
+        // IMPORTANT: This URL MUST point to your running Python Flask backend.
+        // For local testing, this will likely be http://127.0.0.1:5000
+        const BACKEND_URL = 'http://127.0.0.1:5000'; 
+
+        // --- Auth Modal Elements ---
+        const authModal = document.getElementById('authModal');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const authMessage = document.getElementById('authMessage');
+        const authNameInput = document.getElementById('authNameInput');
+        const authMobileInput = document.getElementById('authMobileInput');
+        const authPasskeyInput = document.getElementById('authPasskeyInput');
+        const modalSignInBtn = document.getElementById('modalSignInBtn');
+        const modalSignUpBtn = document.getElementById('modalSignUpBtn');
+
+        // --- Utility Functions for Modals ---
+        function showModalMessage(message, type = 'error') {
+            authMessage.textContent = message;
+            authMessage.className = `modal-message ${type}`;
+            authMessage.style.display = 'block';
+        }
+
+        function hideModalMessage() {
+            authMessage.style.display = 'none';
+        }
+
+        function openAuthModal(isSignUpFlow = false) {
+            authModal.classList.remove('hidden');
+            authNameInput.value = '';
+            authMobileInput.value = '';
+            authPasskeyInput.value = '';
+            hideModalMessage();
+
+            if (isSignUpFlow) {
+                authNameInput.classList.remove('hidden');
+                modalSignInBtn.classList.add('hidden');
+                modalSignUpBtn.classList.remove('hidden');
+                authNameInput.focus();
+            } else {
+                authNameInput.classList.add('hidden');
+                modalSignInBtn.classList.remove('hidden');
+                modalSignUpBtn.classList.add('hidden');
+                authMobileInput.focus();
+            }
+        }
+
+        function closeAuthModal() {
+            authModal.classList.add('hidden');
+        }
+
+        // --- Chatbot Specific Functions ---
+        function addChatMessage(message, sender) {
+            if (!chatHistoryElement) chatHistoryElement = document.getElementById('chatHistoryElement');
+            if (!chatHistoryElement) { console.error("chatHistoryElement element not found."); return; }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('chat-message');
+            if (sender === 'user') {
+                messageDiv.classList.add('user-message');
+                messageDiv.textContent = message; // User messages are plain text
+                chatHistory.push({ role: "user", parts: [{ text: message }] }); // Store user message
+            } else {
+                messageDiv.classList.add('bot-message');
+                messageDiv.innerHTML = marked.parse(message); // Render Markdown to HTML
+                chatHistory.push({ role: "model", parts: [{ text: message }] }); // Store bot message
+            }
+            chatHistoryElement.appendChild(messageDiv);
+            chatHistoryElement.scrollTop = chatHistoryElement.scrollHeight; // Scroll to bottom
+        }
+
+        async function sendChatMessageToBackend(message) {
+            if (!chatInput) chatInput = document.getElementById('chatInput');
+            if (!sendChatButton) sendChatButton = document.getElementById('sendChatButton');
+
+            // Show loading indicator and disable input
+            if (sendChatButton) sendChatButton.disabled = true;
+            if (chatInput) chatInput.disabled = true;
+            
+            // Add a temporary "Typing..." message from the bot
+            const typingMessageDiv = document.createElement('div');
+            typingMessageDiv.classList.add('bot-message', 'chat-message');
+            typingMessageDiv.textContent = "Typing...";
+            chatHistoryElement.appendChild(typingMessageDiv);
+            chatHistoryElement.scrollTop = chatHistoryElement.scrollHeight;
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/ask_bot`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        question: message,
+                        chat_history: chatHistory,
+                        user_id: userId, // Send the actual user ID
+                        ca_level: currentCaLevel
+                    })
+                });
+
+                const data = await response.json();
+                // Remove the "Typing..." message
+                if (typingMessageDiv && typingMessageDiv.parentNode) {
+                    typingMessageDiv.remove();
+                }
+
+                if (response.status === 403 || response.status === 401) { // Handle limits or not signed in
+                    addChatMessage(data.answer, 'bot');
+                    await checkUserPremiumStatus(); // Re-check status to update display and disable input if needed
+                } else if (!response.ok) {
+                    console.error("Error from backend /ask_bot:", data); 
+                    addChatMessage(`Error: Could not get a response. ${data.error || response.statusText}. Please try again.`, 'bot');
+                    await checkUserPremiumStatus(); 
+                } else {
+                    addChatMessage(data.answer, 'bot');
+                    // Only update questionsUsedFreeTier for free users
+                    if (!isPremiumUser) {
+                        questionsUsedFreeTier++;
+                    }
+                    await checkUserPremiumStatus(); // Re-check status to update display
+                }
+
+            } catch (error) {
+                console.error('Error sending message to backend:', error);
+                // Remove the "Typing..." message
+                if (typingMessageDiv && typingMessageDiv.parentNode) {
+                    typingMessageDiv.remove();
+                }
+                addChatMessage(`Error: Could not get a response. ${error.message || 'Please try again.'} Ensure backend is running.`, 'bot');
+            } finally {
+                // The checkUserPremiumStatus will handle re-enabling inputs
+            }
+        }
+
+        function sendActualMessage() {
+            if (!chatInput) chatInput = document.getElementById('chatInput');
+            if (!chatInput) { console.error("chatInput element not found."); return; }
+
+            const userText = chatInput.value.trim();
+            if (userText === '') return;
+
+            addChatMessage(userText, 'user');
+            sendChatMessageToBackend(userText);
+            chatInput.value = '';
+        }
+
+        function initChatbot() {
+            chatHistoryElement = document.getElementById('chatHistoryElement');
+            chatInput = document.getElementById('chatInput');
+            sendChatButton = document.getElementById('sendChatButton');
+            const chatbotCaLevelSelect = document.getElementById('caLevelSelect');
+
+            currentCaLevel = chatbotCaLevelSelect.value;
+
+            if (sendChatButton && chatInput) {
+                sendChatButton.addEventListener('click', sendActualMessage);
+                chatInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        sendActualMessage();
+                    }
+                });
+            } else {
+                console.error("Chatbot elements not found after initialization.");
+            }
+
+            if (chatbotCaLevelSelect) {
+                chatbotCaLevelSelect.addEventListener('change', () => {
+                    const oldLevel = currentCaLevel;
+                    currentCaLevel = chatbotCaLevelSelect.value;
+                    if (oldLevel !== currentCaLevel) {
+                        const oldLevelText = oldLevel === 'Unspecified' ? 'All Levels' : `CA ${oldLevel.replace('_', ' ')}`;
+                        const newLevelText = currentCaLevel === 'Unspecified' ? 'All Levels' : `CA ${currentCaLevel.replace('_', ' ')}`;
+                        addChatMessage(`You've changed the selected CA Level from **${oldLevelText}** to **${newLevelText}**. My answers will now be tailored accordingly. ✨`, 'bot');
+                    }
+                });
+            }
+        }
+
+        function updateChatbotUI() {
+            if (isSignedIn) {
+                chatbotSignInPrompt.classList.add('hidden');
+                chatbotDynamicContent.classList.remove('hidden');
+                if (!chatbotContentLoaded) {
+                    chatbotDynamicContent.innerHTML = `
+                        <div id="chatbotInterface" class="chatbot-container z-10">
+                            <div class="form-group p-4 bg-gray-50 rounded-t-lg border-b border-gray-200">
+                                <label for="caLevelSelect" class="block text-gray-700 text-sm font-bold mb-2">
+                                    Tailor answers to CA Level:
+                                </label>
+                                <select id="caLevelSelect" class="block w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="Unspecified">All CA Levels (General)</option>
+                                    <option value="Foundation">CA Foundation</option>
+                                    <option value="Intermediate">CA Intermediate</option>
+                                    <option value="Final">CA Final</option>
+                                </select>
+                            </div>
+                            <div class="chat-history" id="chatHistoryElement">
+                                <div class="bot-message chat-message">Hello! Ask me anything about CA studies. Select a CA Level above to tailor my responses.</div>
+                            </div>
+                            <div class="chat-input-area">
+                                <input type="text" id="chatInput" placeholder="Type your message..." class="flex-grow">
+                                <button id="sendChatButton">Send</button>
+                            </div>
+                        </div>
+                    `;
+                    initChatbot();
+                    chatbotContentLoaded = true;
+                }
+                // Always check premium status after sign-in or UI update
+                checkUserPremiumStatus();
+                if (chatInput) chatInput.focus();
+            } else {
+                chatbotSignInPrompt.classList.remove('hidden');
+                chatbotDynamicContent.classList.add('hidden');
+                premiumStatusDisplay.textContent = ''; // Clear status when signed out
+            }
+        }
+
+        // --- User Status & Limits (Simplified for Free Tier Only) ---
+        async function checkUserPremiumStatus() {
+            if (!isSignedIn || !userId) {
+                isPremiumUser = false; // Ensure this is false if not signed in
+                questionsUsedFreeTier = 0;
+                premiumStatusDisplay.innerHTML = 'Please sign in to view your chat limits.';
+                if (chatInput) chatInput.disabled = true;
+                if (sendChatButton) sendChatButton.disabled = true;
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/get_user_status/${userId}`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    isPremiumUser = data.isPremium; // Will be false for now
+                    questionsUsedFreeTier = data.questionsUsedFreeTier;
+
+                    let statusText = `User ID: <span class="font-bold">${userId}</span> | `;
+
+                    if (isPremiumUser) {
+                        // This block is effectively disabled for now
+                        statusText += `You are a Premium User! Questions remaining: ${data.questionsRemainingPremium}/500. 🎉`;
+                        if (chatInput) chatInput.disabled = false;
+                        if (sendChatButton) sendChatButton.disabled = false;
+                        upgradeButton.classList.add('hidden'); // Ensure hidden
+                    } else {
+                        statusText += `You've used ${questionsUsedFreeTier}/10 free lifetime questions.`;
+                        if (questionsUsedFreeTier >= 10) {
+                            if (chatInput) chatInput.disabled = true;
+                            if (sendChatButton) sendChatButton.disabled = true;
+                            statusText += " Please upgrade for unlimited access! ✨ (Feature coming soon)";
+                            upgradeButton.classList.add('hidden'); // Ensure hidden
+                        } else {
+                            if (chatInput) chatInput.disabled = false;
+                            if (sendChatButton) sendChatButton.disabled = false;
+                            upgradeButton.classList.add('hidden'); // Ensure hidden
+                        }
+                    }
+                    premiumStatusDisplay.innerHTML = statusText;
+                } else {
+                    console.error("Error fetching user status:", data);
+                    premiumStatusDisplay.innerHTML = `Could not fetch chat limits: ${data.error || 'Unknown error'}. Please try again.`;
+                    isPremiumUser = false;
+                    questionsUsedFreeTier = 0;
+                    if (chatInput) chatInput.disabled = true;
+                    if (sendChatButton) sendChatButton.disabled = true;
+                }
+            } catch (error) {
+                console.error("Network error fetching user status:", error);
+                premiumStatusDisplay.innerHTML = "Network error. Could not fetch chat limits.";
+                isPremiumUser = false;
+                questionsUsedFreeTier = 0;
+                if (chatInput) chatInput.disabled = true;
+                if (sendChatButton) sendChatButton.disabled = true;
+            }
+        }
+
+        // --- Custom Authentication Functions ---
+        async function handleSignUp() {
+            const name = authNameInput.value.trim();
+            const mobile = authMobileInput.value.trim();
+            const passkey = authPasskeyInput.value.trim();
+
+            if (!name || !mobile || !passkey) {
+                showModalMessage("Please fill in all fields.");
+                return;
+            }
+            if (!/^\d{10}$/.test(mobile)) {
+                showModalMessage("Mobile number must be 10 digits.");
+                return;
+            }
+            if (!/^\d{4}$/.test(passkey)) {
+                showModalMessage("Passkey must be 4 digits.");
+                return;
+            }
+
+            showModalMessage("Signing up...", "info");
+            try {
+                const response = await fetch(`${BACKEND_URL}/custom_signup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, mobile_number: mobile, passkey })
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    userId = data.userId;
+                    localStorage.setItem('chatCaUserId', userId);
+                    isSignedIn = true;
+                    closeAuthModal();
+                    updateChatbotUI();
+                    addChatMessage(`Welcome, ${name}! You're signed in and can now chat.`, 'bot');
+                    checkUserPremiumStatus(); // Update status display
+                } else {
+                    showModalMessage(data.error || "Sign up failed. Please try again.");
+                }
+            } catch (error) {
+                console.error('Sign up error:', error);
+                showModalMessage(`Network error during sign up: ${error.message}.`);
+            }
+        }
+
+        async function handleSignIn() {
+            const mobile = authMobileInput.value.trim();
+            const passkey = authPasskeyInput.value.trim();
+
+            if (!mobile || !passkey) {
+                showModalMessage("Please enter mobile number and passkey.");
+                return;
+            }
+            if (!/^\d{10}$/.test(mobile)) {
+                showModalMessage("Mobile number must be 10 digits.");
+                return;
+            }
+            if (!/^\d{4}$/.test(passkey)) {
+                showModalMessage("Passkey must be 4 digits.");
+                return;
+            }
+
+            showModalMessage("Signing in...", "info");
+            try {
+                const response = await fetch(`${BACKEND_URL}/custom_signin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mobile_number: mobile, passkey })
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    userId = data.userId;
+                    localStorage.setItem('chatCaUserId', userId);
+                    isSignedIn = true;
+                    closeAuthModal();
+                    updateChatbotUI();
+                    addChatMessage(`Welcome back! You're signed in and can now chat.`, 'bot');
+                    checkUserPremiumStatus(); // Update status display
+                } else {
+                    showModalMessage(data.error || "Sign in failed. Check your credentials.");
+                }
+            } catch (error) {
+                console.error('Sign in error:', error);
+                showModalMessage(`Network error during sign in: ${error.message}.`);
+            }
+        }
+
+        // --- Main DOMContentLoaded Listener ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const navLinks = document.querySelectorAll('nav a');
+            const ctaButtons = document.querySelectorAll('.cta-button');
+
+            window.showPage = function(pageId) {
+                const targetElement = document.getElementById(pageId);
+                if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                history.pushState(null, '', `#${pageId}`);
+
+                if (pageId === 'chatbot') {
+                    updateChatbotUI();
+                }
+            }
+
+            navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const pageId = link.getAttribute('href').substring(1);
+                    window.showPage(pageId);
+                });
+            });
+
+            ctaButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const href = button.getAttribute('href');
+                    if (href.startsWith('#')) {
+                        window.showPage(href.substring(1));
+                    }
+                });
+            });
+
+            // --- Auth Modal Event Listeners ---
+            signInButton.addEventListener('click', () => openAuthModal());
+            closeModalBtn.addEventListener('click', closeAuthModal);
+            modalSignInBtn.addEventListener('click', handleSignIn);
+            modalSignUpBtn.addEventListener('click', handleSignUp);
+
+            // Allow switching between sign-in/sign-up within the modal
+            authMobileInput.addEventListener('input', () => {
+                // If mobile number is entered, show sign-in/sign-up options
+                if (authMobileInput.value.length === 10) {
+                    authNameInput.classList.remove('hidden'); // Always show name for sign-up
+                    modalSignInBtn.classList.remove('hidden');
+                    modalSignUpBtn.classList.remove('hidden');
+                } else {
+                    authNameInput.classList.add('hidden');
+                    modalSignInBtn.classList.add('hidden');
+                    modalSignUpBtn.classList.add('hidden');
+                }
+                hideModalMessage();
+            });
+            authPasskeyInput.addEventListener('input', hideModalMessage);
+            authNameInput.addEventListener('input', hideModalMessage);
+
+
+            const initialPage = window.location.hash.substring(1) || 'home';
+            setTimeout(() => {
+                window.showPage(initialPage);
+                // On initial load, if a user ID is found in localStorage, assume signed in
+                if (userId) {
+                    isSignedIn = true;
+                    updateChatbotUI(); // This will enable chat and call checkUserPremiumStatus
+                } else {
+                    isSignedIn = false;
+                    // Ensure chat is disabled if not signed in
+                    if (chatInput) chatInput.disabled = true;
+                    if (sendChatButton) sendChatButton.disabled = true;
+                    premiumStatusDisplay.innerHTML = 'Please sign in to view your chat limits.';
+                }
+            }, 100);
+        });
+    </script>
+</body>
+</html>
