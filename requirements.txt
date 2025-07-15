@@ -6,3 +6,4 @@ google-generativeai
 Flask-CORS
 razorpay
 qdrant-client
+gunicorn==21.2.0
