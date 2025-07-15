@@ -4,3 +4,5 @@ python-dotenv
 chromadb
 google-generativeai
 Flask-CORS
+razorpay
+qdrant-client
