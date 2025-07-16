@@ -1,9 +1,9 @@
-Flask[async]
 Flask==2.3.3
 Flask-Cors==3.0.10
-google-generativeai==0.3.0
+google-generativeai==0.10.0 # Updated for gemini-1.5-flash and async support
 razorpay==1.3.0
 qdrant-client==1.8.0
 gunicorn==21.2.0
-setuptools # Added this line
-python-dotenv==1.0.0 # Only if you are using a .env file for local environment variables
+setuptools
+grpcio==1.62.1
+python-dotenv==1.0.0
