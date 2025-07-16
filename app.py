@@ -60,6 +60,39 @@ try:
     # Test connection
     # qdrant_client.get_collections()
     print("DEBUG: Qdrant client initialized successfully.")
+
+    # FIXED: Ensure 'source' field has a keyword index for filtering
+    # This is crucial for filtering by CA_Intermediate_Syllabus.pdf etc.
+    async def create_qdrant_index_if_not_exists():
+        try:
+            # Check if the collection exists first
+            collection_info = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: qdrant_client.get_collection(collection_name=QDRANT_COLLECTION_NAME)
+            )
+            # Check if the index already exists
+            if "source" not in collection_info.config.params.field_index_config:
+                print(f"INFO: 'source' index not found in Qdrant collection '{QDRANT_COLLECTION_NAME}'. Creating it...")
+                await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: qdrant_client.create_payload_index(
+                        collection_name=QDRANT_COLLECTION_NAME,
+                        field_name="source",
+                        field_schema=models.FieldSchema(
+                            type=models.FieldType.KEYWORD # Source field is a keyword
+                        )
+                    )
+                )
+                print(f"INFO: 'source' keyword index created successfully for collection '{QDRANT_COLLECTION_NAME}'.")
+            else:
+                print(f"INFO: 'source' index already exists for collection '{QDRANT_COLLECTION_NAME}'.")
+        except Exception as e:
+            print(f"WARNING: Could not check/create 'source' index in Qdrant: {e}")
+
+    # Run the index creation on app startup
+    # This will run in the background and not block the app startup
+    asyncio.ensure_future(create_qdrant_index_if_not_exists())
+
 except Exception as e:
     print(f"ERROR: Failed to initialize Qdrant client: {e}")
 
@@ -326,25 +359,22 @@ Rephrased Question:
                     "Foundation": "CA_Foundation_Syllabus.pdf",
                     "Intermediate": "CA_Intermediate_Syllabus.pdf",
                     "Final": "CA_Final_Syllabus.pdf",
-                    "SPOM": "CA_SPOM_Syllabus.pdf",
-                    "IT_Soft_Skills": "CA_IT_Soft_Skills_Syllabus.pdf"
+                    "Self-Paced Online Module": "CA_SPOM_Syllabus.pdf", # Corrected key
+                    "Information Technology and Soft Skills Training": "CA_IT_Soft_Skills_Syllabus.pdf" # Corrected key
                 }
-                level_key = ca_level.replace('CA ', '').replace(' ', '_')
-                if level_key == "Self-Paced Online Module":
-                    level_key = "SPOM"
-                elif level_key == "Information Technology and Soft Skills Training":
-                    level_key = "IT_Soft_Skills"
+                # Ensure the key used for lookup matches the exact option value from frontend
+                filename_to_filter = level_patterns.get(ca_level)
 
-                if level_key in level_patterns:
+                if filename_to_filter:
                     query_filter = models.Filter(
                         must=[
                             models.FieldCondition(
                                 key="source",
-                                match=models.MatchValue(value=level_patterns[level_key])
+                                match=models.MatchValue(value=filename_to_filter)
                             )
                         ]
                     )
-                    print(f"DEBUG: Qdrant query filter applied for level '{ca_level}': {level_patterns[level_key]}")
+                    print(f"DEBUG: Qdrant query filter applied for level '{ca_level}': {filename_to_filter}")
                 else:
                     print(f"WARNING: Unknown CA level '{ca_level}'. No specific syllabus filter applied.")
 
@@ -436,7 +466,7 @@ Rephrased Question:
             * **Conclude the technical answer with a clear statement:** "Please note: This response is tuned as per ICAI guidelines."
             * **For "difficult problems" or "sums"**: Provide clear, step-by-step solutions. If a numerical problem, present the solution methodically.
         4.  If the question is a **follow-up requesting a simpler explanation** of a previous concept (e.g., "in simpler terms", "explain it easily", "can you simplify that?"), then **do NOT include the "tuned as per ICAI guidelines" statement.** Provide a general, easy-to-understand explanation.
-        5.  **For requests requiring tabular presentation** (e.g., "show journal entry for...", "prepare ledger for...", "present final accounts of...", "calculate tax for...", "list differences between X and Y in a table"):
+        5.  For requests requiring tabular presentation (e.g., "show journal entry for...", "prepare ledger for...", "present final accounts of...", "calculate tax for...", "list differences between X and Y in a table"):
             * **CRITICAL: Format the entire response as a Markdown table.** Ensure clear headers and appropriate columns.
             * **IMPORTANT: Immediately following the table, provide a short, concise note (1-2 sentences) explaining the entry or sum.**
             * Do not provide a numbered list if a table is requested.
@@ -473,8 +503,8 @@ async def extract_syllabus_structure():
         "Foundation": "CA_Foundation_Syllabus.pdf",
         "Intermediate": "CA_Intermediate_Syllabus.pdf",
         "Final": "CA_Final_Syllabus.pdf",
-        "SPOM": "CA_SPOM_Syllabus.pdf",
-        "IT_Soft_Skills": "CA_IT_Soft_Skills_Syllabus.pdf"
+        "Self-Paced Online Module": "CA_SPOM_Syllabus.pdf",
+        "Information Technology and Soft Skills Training": "CA_IT_Soft_Skills_Syllabus.pdf"
     }
 
     filename_to_extract = syllabus_filename_map.get(ca_level)
