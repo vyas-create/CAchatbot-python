@@ -7,3 +7,10 @@ services:
     envVars:
       - key: PIP_ONLY_BINARY
         value: grpcio
+      - key: GEMINI_API_KEY
+        value: {{ GEMINI_API_KEY }}  # Set this in Render dashboard
+      - key: RAZORPAY_KEY_ID
+        value: {{ RAZORPAY_KEY_ID }}  # Set this in Render dashboard
+      - key: RAZORPAY_KEY_SECRET
+        value: {{ RAZORPAY_KEY_SECRET }}  # Set this in Render dashboard
+
