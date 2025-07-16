@@ -222,6 +222,7 @@ async def list_knowledge_base():
 @app.route('/ask_bot', methods=['POST'])
 async def ask_bot():
     data = request.get_json()
+    # FIXED: Changed 'text' to 'question' to match frontend payload
     question = data.get('question')
     chat_history = data.get('chat_history', []) # Get chat history from frontend
     user_id = data.get('user_id', None) # Get user_id from frontend (now just for logging, not auth/limits)
@@ -347,12 +348,12 @@ Rephrased Question:
                 else:
                     print(f"WARNING: Unknown CA level '{ca_level}'. No specific syllabus filter applied.")
 
-            # Perform search in Qdrant using query_points
+            # FIXED: Changed query_points to search
             search_results_raw = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: qdrant_client.query_points(
+                lambda: qdrant_client.search(
                     collection_name=QDRANT_COLLECTION_NAME,
-                    query=question_embedding,
+                    query_vector=question_embedding, # Use query_vector for the embedding
                     query_filter=query_filter,
                     limit=5, # Number of results to retrieve
                     with_payload=True, # Include payload (document text, source)
@@ -361,6 +362,8 @@ Rephrased Question:
             )
 
             # Handle potential tuple wrapping from run_in_executor
+            # The search method directly returns a list of ScoredPoint, so this unpacking might not be strictly necessary
+            # but keeping it for robustness if run_in_executor adds a tuple.
             if isinstance(search_results_raw, tuple) and len(search_results_raw) > 0 and isinstance(search_results_raw[0], list):
                 search_results = search_results_raw[0]
                 print(f"DEBUG: Unpacked Qdrant search results from tuple. Original type: {type(search_results_raw)}, new type: {type(search_results)}")
@@ -380,11 +383,12 @@ Rephrased Question:
 
                 if not relevant_context and ca_level != 'Unspecified':
                     print(f"DEBUG: No specific context found for {ca_level}. Attempting general RAG fallback.")
+                    # FIXED: Changed query_points to search for fallback
                     fallback_results_raw = await asyncio.get_event_loop().run_in_executor(
                         None,
-                        lambda: qdrant_client.query_points(
+                        lambda: qdrant_client.search(
                             collection_name=QDRANT_COLLECTION_NAME,
-                            query=question_embedding,
+                            query_vector=question_embedding, # Use query_vector for the embedding
                             limit=3,
                             with_payload=True
                         )
