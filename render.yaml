@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: ca-assistant
+    runtime: python
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PIP_ONLY_BINARY
+        value: grpcio
