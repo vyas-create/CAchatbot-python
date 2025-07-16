@@ -7,23 +7,20 @@ import re
 import json
 
 from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask_cors import CORS # Ensure CORS is imported
 import google.generativeai as genai
 import razorpay
-from qdrant_client import QdrantClient, models # Import Qdrant client and models
+from qdrant_client import QdrantClient, models
 
 # --- Configuration ---
 # Flask App
 app = Flask(__name__)
-CORS(app) # Enable CORS for all routes
+# FIXED: Explicitly allow your Netlify frontend origin for CORS
+# It's good practice to be specific rather than allowing all (*) in production
+CORS(app, resources={r"/*": {"origins": "https://chatca.netlify.app"}})
 
 # Google Cloud Project ID (for Firestore) - No longer used, but kept for context if user re-adds Firestore
 PROJECT_ID = os.environ.get('GOOGLE_CLOUD_PROJECT', 'ca-assistant-427907')
-
-# Firebase/Firestore Initialization - REMOVED
-# firestore_db = None
-# print("WARNING: Firestore is intentionally not initialized as per user request for testing.")
-
 
 # Gemini API Key
 # This should be set in your environment variables for deployment
@@ -57,9 +54,62 @@ try:
         url=QDRANT_URL,
         api_key=QDRANT_API_KEY,
     )
-    # Test connection
-    # qdrant_client.get_collections()
     print("DEBUG: Qdrant client initialized successfully.")
+
+    # Asynchronous function to create collection and index if they don't exist
+    async def ensure_qdrant_setup():
+        try:
+            # 1. Check if collection exists
+            collections_response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: qdrant_client.get_collections()
+            )
+            existing_collections = [c.name for c in collections_response.collections]
+
+            if QDRANT_COLLECTION_NAME not in existing_collections:
+                print(f"INFO: Qdrant collection '{QDRANT_COLLECTION_NAME}' not found. Creating it...")
+                await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: qdrant_client.recreate_collection( # Use recreate_collection for simplicity if it's okay to overwrite
+                        collection_name=QDRANT_COLLECTION_NAME,
+                        vectors_config=models.VectorParams(size=768, distance=models.Distance.COSINE), # Assuming text-embedding-004 output size is 768
+                    )
+                )
+                print(f"INFO: Qdrant collection '{QDRANT_COLLECTION_NAME}' created successfully.")
+            else:
+                print(f"INFO: Qdrant collection '{QDRANT_COLLECTION_NAME}' already exists.")
+
+            # 2. Check and create 'source' index within the collection
+            # A safer way to check for existing indexes is via `list_payload_indexes`
+            indexes = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: qdrant_client.list_payload_indexes(collection_name=QDRANT_COLLECTION_NAME)
+            )
+            source_index_exists = any(idx.field_name == "source" and idx.field_schema == "keyword" for idx in indexes.indexes)
+
+
+            if not source_index_exists:
+                print(f"INFO: 'source' keyword index not found for collection '{QDRANT_COLLECTION_NAME}'. Creating it...")
+                await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: qdrant_client.create_payload_index(
+                        collection_name=QDRANT_COLLECTION_NAME,
+                        field_name="source",
+                        field_schema=models.FieldSchema(
+                            type=models.FieldType.KEYWORD # Source field is a keyword
+                        )
+                    )
+                )
+                print(f"INFO: 'source' keyword index created successfully for collection '{QDRANT_COLLECTION_NAME}'.")
+            else:
+                print(f"INFO: 'source' keyword index already exists for collection '{QDRANT_COLLECTION_NAME}'.")
+
+        except Exception as e:
+            print(f"ERROR: Failed to ensure Qdrant setup (collection/index creation): {e}")
+
+    # Run the Qdrant setup on app startup
+    asyncio.ensure_future(ensure_qdrant_setup())
+
 except Exception as e:
     print(f"ERROR: Failed to initialize Qdrant client: {e}")
 
@@ -326,25 +376,22 @@ Rephrased Question:
                     "Foundation": "CA_Foundation_Syllabus.pdf",
                     "Intermediate": "CA_Intermediate_Syllabus.pdf",
                     "Final": "CA_Final_Syllabus.pdf",
-                    "SPOM": "CA_SPOM_Syllabus.pdf",
-                    "IT_Soft_Skills": "CA_IT_Soft_Skills_Syllabus.pdf"
+                    "Self-Paced Online Module": "CA_SPOM_Syllabus.pdf", # Corrected key
+                    "Information Technology and Soft Skills Training": "CA_IT_Soft_Skills_Syllabus.pdf" # Corrected key
                 }
-                level_key = ca_level.replace('CA ', '').replace(' ', '_')
-                if level_key == "Self-Paced Online Module":
-                    level_key = "SPOM"
-                elif level_key == "Information Technology and Soft Skills Training":
-                    level_key = "IT_Soft_Skills"
+                # Ensure the key used for lookup matches the exact option value from frontend
+                filename_to_filter = level_patterns.get(ca_level)
 
-                if level_key in level_patterns:
+                if filename_to_filter:
                     query_filter = models.Filter(
                         must=[
                             models.FieldCondition(
                                 key="source",
-                                match=models.MatchValue(value=level_patterns[level_key])
+                                match=models.MatchValue(value=filename_to_filter)
                             )
                         ]
                     )
-                    print(f"DEBUG: Qdrant query filter applied for level '{ca_level}': {level_patterns[level_key]}")
+                    print(f"DEBUG: Qdrant query filter applied for level '{ca_level}': {filename_to_filter}")
                 else:
                     print(f"WARNING: Unknown CA level '{ca_level}'. No specific syllabus filter applied.")
 
@@ -419,6 +466,8 @@ Rephrased Question:
         main_answer_prompt = f"""
         **Answer the user's question to the best of your ability.**
 
+        **CRITICAL: If the user explicitly asks for a table (e.g., "show journal entry for...", "prepare ledger for...", "present final accounts of...", "calculate tax for...", "list differences between X and Y in a table"), then you MUST FORMAT THE ENTIRE RESPONSE AS A MARKDOWN TABLE. Ensure clear headers and appropriate columns. DO NOT provide any introductory or concluding sentences outside the table and its immediate explanation.**
+
         **Current CA Level Selected:** {ca_level if ca_level != 'Unspecified' else 'All Levels'}
 
         **Context from documents:**
@@ -436,10 +485,7 @@ Rephrased Question:
             * **Conclude the technical answer with a clear statement:** "Please note: This response is tuned as per ICAI guidelines."
             * **For "difficult problems" or "sums"**: Provide clear, step-by-step solutions. If a numerical problem, present the solution methodically.
         4.  If the question is a **follow-up requesting a simpler explanation** of a previous concept (e.g., "in simpler terms", "explain it easily", "can you simplify that?"), then **do NOT include the "tuned as per ICAI guidelines" statement.** Provide a general, easy-to-understand explanation.
-        5.  **IMPORTANT: If the user explicitly asks for a table (e.g., "show journal entry for...", "prepare ledger for...", "present final accounts of...", "calculate tax for...", "list differences between X and Y in a table"), then you MUST FORMAT THE ENTIRE RESPONSE AS A MARKDOWN TABLE. Ensure clear headers and appropriate columns. DO NOT provide any introductory or concluding sentences outside the table and its immediate explanation.**
-            * Immediately following the table, provide a short, concise note (1-2 sentences) explaining the entry or sum.
-            * Do not provide a numbered list if a table is requested.
-            * If the request is for a "sum" or "problem" that is not inherently tabular (e.g., a long calculation), provide the solution clearly in a tabular format if applicable, or step-by-step if not.
+        5.  **If a table is requested (as per the CRITICAL instruction above):** Immediately following the table, provide a short, concise note (1-2 sentences) explaining the entry or sum. Do not provide a numbered list if a table is requested. If the request is for a "sum" or "problem" that is not inherently tabular (e.g., a long calculation), provide the solution clearly in a tabular format if applicable, or step-by-step if not.
         6.  For all other questions (non-technical, non-tabular, non-simplification requests), follow the standard numbered list format as per your base system instruction.
         """
         full_conversation_contents.append({"role": "user", "parts": [{"text": main_answer_prompt}]})
@@ -472,8 +518,8 @@ async def extract_syllabus_structure():
         "Foundation": "CA_Foundation_Syllabus.pdf",
         "Intermediate": "CA_Intermediate_Syllabus.pdf",
         "Final": "CA_Final_Syllabus.pdf",
-        "SPOM": "CA_SPOM_Syllabus.pdf",
-        "IT_Soft_Skills": "CA_IT_Soft_Skills_Syllabus.pdf"
+        "Self-Paced Online Module": "CA_SPOM_Syllabus.pdf",
+        "Information Technology and Soft Skills Training": "CA_IT_Soft_Skills_Syllabus.pdf"
     }
 
     filename_to_extract = syllabus_filename_map.get(ca_level)
