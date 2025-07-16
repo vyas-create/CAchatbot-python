@@ -4,7 +4,6 @@ google-generativeai==0.8.5
 razorpay==1.3.0
 qdrant-client==1.8.0
 gunicorn==21.2.0
-setuptools>=65.5.0  # Ensures compatibility with recent wheels
-grpcio==1.46.3  # Downgraded to avoid wheel build issues
+setuptools>=65.5.0
+grpcio==1.48.2
 python-dotenv==1.0.0
-
