@@ -1,317 +1,314 @@
 from dotenv import load_dotenv
-    import os
-    import asyncio
-    import functools
-    from datetime import datetime, timezone
-    import re
-    import json
+import os
+import asyncio
+import functools
+from datetime import datetime, timezone
+import re
+import json
 
-    from flask import Flask, request, jsonify
-    from flask_cors import CORS
-    import google.generativeai as genai
-    from qdrant_client import QdrantClient, models
-    import razorpay
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import google.generativeai as genai
+from qdrant_client import QdrantClient, models
+import razorpay
 
-    # --- Configuration ---
-    # Flask App
-    app = Flask(__name__)
-    CORS(app) # Enable CORS for all routes
+# --- Configuration ---
+# Flask App
+app = Flask(__name__)
+CORS(app) # Enable CORS for all routes
 
-    # Google Cloud Project ID (for Firestore) - No longer used, but kept for context if user re-adds Firestore
-    PROJECT_ID = os.environ.get('GOOGLE_CLOUD_PROJECT', 'ca-assistant-427907')
+# Google Cloud Project ID (for Firestore) - No longer used, but kept for context if user re-adds Firestore
+PROJECT_ID = os.environ.get('GOOGLE_CLOUD_PROJECT', 'ca-assistant-427907')
 
-    # Gemini API Key
-    # This should be set in your environment variables for deployment
-    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-    if GEMINI_API_KEY:
-        genai.configure(api_key=GEMINI_API_KEY)
-        print("DEBUG: Gemini API configured.")
-    else:
-        print("WARNING: GEMINI_API_KEY not found. Gemini API will not be available.")
+# Gemini API Key
+# This should be set in your environment variables for deployment
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    print("DEBUG: Gemini API configured.")
+else:
+    print("WARNING: GEMINI_API_KEY not found. Gemini API will not be available.")
 
-    # Razorpay Configuration
-    RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID')
-    RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET')
+# Razorpay Configuration
+RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID')
+RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET')
 
-    razorpay_client = None
-    if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
-        razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-        razorpay_client.set_app_details("CA Student Assistant", "1.0")
-        print("DEBUG: Razorpay client initialized.")
-    else:
-        print("WARNING: Razorpay keys not found. Payment functionality will be disabled.")
+razorpay_client = None
+if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
+    razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+    razorpay_client.set_app_details("CA Student Assistant", "1.0")
+    print("DEBUG: Razorpay client initialized.")
+else:
+    print("WARNING: Razorpay keys not found. Payment functionality will be disabled.")
 
-    # Qdrant Configuration
-    QDRANT_URL = "https://d8ce58a7-9c1b-4952-8b2d-5e8de1a30ddf.europe-west3-0.gcp.cloud.qdrant.io:6333"
-    QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.6UOzQET7_YLGn5VG2E72G8pPExZmU8DqXDe6VH3xxyY"
-    QDRANT_COLLECTION_NAME = "ca_chatbot_knowledge" # Updated to your confirmed collection name
+# Qdrant Configuration
+QDRANT_URL = "https://d8ce58a7-9c1b-4952-8b2d-5e8de1a30ddf.europe-west3-0.gcp.cloud.qdrant.io:6333"
+QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.6UOzQET7_YLGn5VG2E72G8pPExZmU8DqXDe6VH3xxyY"
+QDRANT_COLLECTION_NAME = "ca_chatbot_knowledge" # Updated to your confirmed collection name
 
-    qdrant_client = None
-    try:
-        qdrant_client = QdrantClient(
-            url=QDRANT_URL,
-            api_key=QDRANT_API_KEY,
-        )
-        print("DEBUG: Qdrant client initialized successfully.")
+qdrant_client = None
+try:
+    qdrant_client = QdrantClient(
+        url=QDRANT_URL,
+        api_key=QDRANT_API_KEY,
+    )
+    print("DEBUG: Qdrant client initialized successfully.")
 
-        # FIXED: Asynchronous function to create collection and index if they don't exist
-        async def ensure_qdrant_setup():
-            try:
-                # 1. Check if collection exists
-                collections_response = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: qdrant_client.get_collections()
-                )
-                existing_collections = [c.name for c in collections_response.collections]
-
-                if QDRANT_COLLECTION_NAME not in existing_collections:
-                    print(f"INFO: Qdrant collection '{QDRANT_COLLECTION_NAME}' not found. Creating it...")
-                    await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: qdrant_client.recreate_collection( # Use recreate_collection for simplicity if it's okay to overwrite
-                            collection_name=QDRANT_COLLECTION_NAME,
-                            vectors_config=models.VectorParams(size=768, distance=models.Distance.COSINE), # Assuming text-embedding-004 output size is 768
-                        )
-                    )
-                    print(f"INFO: Qdrant collection '{QDRANT_COLLECTION_NAME}' created successfully.")
-                else:
-                    print(f"INFO: Qdrant collection '{QDRANT_COLLECTION_NAME}' already exists.")
-
-                # 2. Check and create 'source' index within the collection
-                collection_info = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: qdrant_client.get_collection(collection_name=QDRANT_COLLECTION_NAME)
-                )
-
-                # Check if the index already exists
-                # Accessing field_index_config directly might vary by Qdrant client version,
-                # a more robust check might involve listing indexes.
-                # For now, let's assume collection_info.config.params.field_index_config exists and can be checked.
-                # A safer way to check for existing indexes is via `list_payload_indexes`
-                indexes = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: qdrant_client.list_payload_indexes(collection_name=QDRANT_COLLECTION_NAME)
-                )
-                source_index_exists = any(idx.field_name == "source" and idx.field_schema == "keyword" for idx in indexes.indexes)
-
-
-                if not source_index_exists:
-                    print(f"INFO: 'source' keyword index not found for collection '{QDRANT_COLLECTION_NAME}'. Creating it...")
-                    await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: qdrant_client.create_payload_index(
-                            collection_name=QDRANT_COLLECTION_NAME,
-                            field_name="source",
-                            field_schema=models.FieldSchema(
-                                type=models.FieldType.KEYWORD # Source field is a keyword
-                            )
-                        )
-                    )
-                    print(f"INFO: 'source' keyword index created successfully for collection '{QDRANT_COLLECTION_NAME}'.")
-                else:
-                    print(f"INFO: 'source' keyword index already exists for collection '{QDRANT_COLLECTION_NAME}'.")
-
-            except Exception as e:
-                print(f"ERROR: Failed to ensure Qdrant setup (collection/index creation): {e}")
-
-        # Run the Qdrant setup on app startup
-        asyncio.ensure_future(ensure_qdrant_setup())
-
-    except Exception as e:
-        print(f"ERROR: Failed to initialize Qdrant client: {e}")
-
-    # Embedding Model (for RAG)
-    # You might need to specify the model name that was used to create embeddings in Qdrant
-    EMBEDDING_MODEL_NAME = "models/text-embedding-004" # Example model name
-
-    # --- Helper Functions ---
-    async def get_embedding(text):
-        """Generates an embedding for the given text using Gemini's embedding model."""
-        if not GEMINI_API_KEY:
-            print("ERROR: Gemini API key not configured, cannot generate embeddings.")
-            return None
+    # Asynchronous function to create collection and index if they don't exist
+    async def ensure_qdrant_setup():
         try:
-            # The embedding model is typically accessed via genai.embed_content
-            # Ensure the model name matches what you used to populate Qdrant
-            response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: genai.embed_content(model=EMBEDDING_MODEL_NAME, content=text)
-            )
-            return response['embedding']
-        except Exception as e:
-            print(f"ERROR: Failed to get embedding: {e}")
-            return None
-
-    async def get_gemini_response(prompt_parts, response_mime_type="text/plain"):
-        """Gets a response from the Gemini model."""
-        if not GEMINI_API_KEY:
-            return "I'm sorry, the AI assistant is not configured. Please check API keys."
-        try:
-            model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash", # Using gemini-1.5-flash as requested
-                generation_config={"response_mime_type": response_mime_type}
-            )
-            # Ensure prompt_parts is in the correct format for generate_content
-            # It expects a list of dictionaries, each with 'role' and 'parts'
-            response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: model.generate_content(prompt_parts)
-            )
-            # Access the text from the response
-            if response.candidates and response.candidates[0].content.parts:
-                return response.candidates[0].content.parts[0].text
-            else:
-                print(f"WARNING: Gemini response had no text content: {response}")
-                return "I'm sorry, I couldn't generate a response."
-        except Exception as e:
-            print(f"ERROR: Error getting Gemini response: {e}")
-            if "JSON" in str(e) and "parse" in str(e):
-                return "AI_JSON_PARSE_ERROR: The AI generated an unparseable JSON response."
-            return f"I'm sorry, I encountered an error: {e}"
-
-    # --- Endpoints ---
-
-    # NEW: Root endpoint for basic health check/info
-    @app.route('/', methods=['GET'])
-    def home():
-        """
-        A simple root endpoint to confirm the service is running.
-        """
-        return jsonify({"message": "CA Chatbot service is running!", "status": "OK"}), 200
-
-
-    @app.route('/test_qdrant', methods=['GET'])
-    async def test_qdrant():
-        """
-        Tests Qdrant connection and lists all collections, checking for the expected one.
-        """
-        if qdrant_client is None:
-            return jsonify({"error": "Qdrant client not initialized."}), 500
-        try:
-            collections = await asyncio.get_event_loop().run_in_executor(
+            # 1. Check if collection exists
+            collections_response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: qdrant_client.get_collections()
             )
-            collection_names = [c.name for c in collections.collections]
+            existing_collections = [c.name for c in collections_response.collections]
 
-            found_expected_collection = QDRANT_COLLECTION_NAME in collection_names
-
-            return jsonify({
-                "status": "Qdrant connection successful",
-                "found_collections": collection_names,
-                "expected_collection_exists": found_expected_collection,
-                "expected_collection_name": QDRANT_COLLECTION_NAME
-            }), 200
-        except Exception as e:
-            print(f"ERROR: Error testing Qdrant connection: {e}")
-            return jsonify({"error": f"Failed to connect to Qdrant or list collections: {e}"}), 500
-
-    @app.route('/list_knowledge_base', methods=['GET'])
-    async def list_knowledge_base():
-        """
-        Lists unique PDF sources (documents) from the Qdrant knowledge base.
-        """
-        if qdrant_client is None:
-            print("WARNING: Qdrant client not initialized.")
-            return jsonify({"error": "Knowledge base not initialized"}), 500
-
-        try:
-            # Get count of documents in the collection
-            count_result = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: qdrant_client.count(collection_name=QDRANT_COLLECTION_NAME, exact=True)
-            )
-            doc_count = count_result.count
-            print(f"DEBUG: list_knowledge_base: Current document count in Qdrant: {doc_count}")
-
-            if doc_count == 0:
-                print("DEBUG: list_knowledge_base: No documents found in Qdrant.")
-                return jsonify({"uploaded_pdfs": []}), 200
-
-            # Scroll through all points to get their metadata (source)
-            # Use a large limit to get all, or paginate if collection is very large
-            all_points = []
-            offset = None
-            while True:
-                scroll_result, next_page_offset = await asyncio.get_event_loop().run_in_executor(
+            if QDRANT_COLLECTION_NAME not in existing_collections:
+                print(f"INFO: Qdrant collection '{QDRANT_COLLECTION_NAME}' not found. Creating it...")
+                await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: qdrant_client.scroll(
+                    lambda: qdrant_client.recreate_collection( # Use recreate_collection for simplicity if it's okay to overwrite
                         collection_name=QDRANT_COLLECTION_NAME,
-                        limit=100, # Adjust limit as needed
-                        offset=offset,
-                        with_payload=True,
-                        with_vectors=False
+                        vectors_config=models.VectorParams(size=768, distance=models.Distance.COSINE), # Assuming text-embedding-004 output size is 768
                     )
                 )
-                all_points.extend(scroll_result)
-                if next_page_offset is None:
-                    break
-                offset = next_page_offset
+                print(f"INFO: Qdrant collection '{QDRANT_COLLECTION_NAME}' created successfully.")
+            else:
+                print(f"INFO: Qdrant collection '{QDRANT_COLLECTION_NAME}' already exists.")
 
-            unique_sources = set()
-            for point in all_points:
-                if point.payload and 'source' in point.payload:
-                    unique_sources.add(point.payload['source'])
+            # 2. Check and create 'source' index within the collection
+            collection_info = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: qdrant_client.get_collection(collection_name=QDRANT_COLLECTION_NAME)
+            )
 
-            print(f"DEBUG: list_knowledge_base: Found {len(unique_sources)} unique PDF sources.")
-            return jsonify({"uploaded_pdfs": sorted(list(unique_sources))}), 200
+            # Check if the index already exists
+            # A safer way to check for existing indexes is via `list_payload_indexes`
+            indexes = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: qdrant_client.list_payload_indexes(collection_name=QDRANT_COLLECTION_NAME)
+            )
+            source_index_exists = any(idx.field_name == "source" and idx.field_schema == "keyword" for idx in indexes.indexes)
+
+
+            if not source_index_exists:
+                print(f"INFO: 'source' keyword index not found for collection '{QDRANT_COLLECTION_NAME}'. Creating it...")
+                await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: qdrant_client.create_payload_index(
+                        collection_name=QDRANT_COLLECTION_NAME,
+                        field_name="source",
+                        field_schema=models.FieldSchema(
+                            type=models.FieldType.KEYWORD # Source field is a keyword
+                        )
+                    )
+                )
+                print(f"INFO: 'source' keyword index created successfully for collection '{QDRANT_COLLECTION_NAME}'.")
+            else:
+                print(f"INFO: 'source' keyword index already exists for collection '{QDRANT_COLLECTION_NAME}'.")
 
         except Exception as e:
-            print(f"ERROR: Error listing knowledge base from Qdrant: {e}")
-            return jsonify({"error": f"Failed to list knowledge base: {e}"}), 500
+            print(f"ERROR: Failed to ensure Qdrant setup (collection/index creation): {e}")
 
-    # --- User status and chat history helpers (REMOVED due to Firestore removal) ---
-    # @app.route('/get_user_status/<user_id>', methods=['GET'])
-    # async def get_user_status_endpoint(user_id):
-    #     # For testing without Firestore, always return a default success
-    #     return jsonify({
-    #         "isPremium": True, # Assume premium for testing functionality
-    #         "questionsUsedFreeTier": 0,
-    #         "questionsRemainingPremium": 500 # Plenty of questions
-    #     }), 200
+    # Run the Qdrant setup on app startup
+    asyncio.ensure_future(ensure_qdrant_setup())
 
-    # async def update_question_counts(user_id, is_premium, current_free_used, current_premium_remaining):
-    #     print(f"DEBUG: Question counts would have been updated for user {user_id} if Firestore was enabled.")
+except Exception as e:
+    print(f"ERROR: Failed to initialize Qdrant client: {e}")
 
-    # async def save_chat_history(user_id, user_message, bot_response, ca_level):
-    #     print(f"DEBUG: Chat history for user {user_id} would have been saved if Firestore was enabled.")
+# Embedding Model (for RAG)
+# You might need to specify the model name that was used to create embeddings in Qdrant
+EMBEDDING_MODEL_NAME = "models/text-embedding-004" # Example model name
 
-    @app.route('/ask_bot', methods=['POST'])
-    async def ask_bot():
-        data = request.get_json()
-        # FIXED: Changed 'text' to 'question' to match frontend payload
-        question = data.get('question')
-        chat_history = data.get('chat_history', []) # Get chat history from frontend
-        user_id = data.get('user_id', None) # Get user_id from frontend (now just for logging, not auth/limits)
-        ca_level = data.get('ca_level', 'Unspecified') # Get selected CA level from frontend
+# --- Helper Functions ---
+async def get_embedding(text):
+    """Generates an embedding for the given text using Gemini's embedding model."""
+    if not GEMINI_API_KEY:
+        print("ERROR: Gemini API key not configured, cannot generate embeddings.")
+        return None
+    try:
+        # The embedding model is typically accessed via genai.embed_content
+        # Ensure the model name matches what you used to populate Qdrant
+        response = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: genai.embed_content(model=EMBEDDING_MODEL_NAME, content=text)
+        )
+        return response['embedding']
+    except Exception as e:
+        print(f"ERROR: Failed to get embedding: {e}")
+        return None
 
-        if not question:
-            return jsonify({"error": "No question provided"}), 400
+async def get_gemini_response(prompt_parts, response_mime_type="text/plain"):
+    """Gets a response from the Gemini model."""
+    if not GEMINI_API_KEY:
+        return "I'm sorry, the AI assistant is not configured. Please check API keys."
+    try:
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash", # Using gemini-1.5-flash as requested
+            generation_config={"response_mime_type": response_mime_type}
+        )
+        # Ensure prompt_parts is in the correct format for generate_content
+        # It expects a list of dictionaries, each with 'role' and 'parts'
+        response = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: model.generate_content(prompt_parts)
+        )
+        # Access the text from the response
+        if response.candidates and response.candidates[0].content.parts:
+            return response.candidates[0].content.parts[0].text
+        else:
+            print(f"WARNING: Gemini response had no text content: {response}")
+            return "I'm sorry, I couldn't generate a response."
+    except Exception as e:
+        print(f"ERROR: Error getting Gemini response: {e}")
+        if "JSON" in str(e) and "parse" in str(e):
+            return "AI_JSON_PARSE_ERROR: The AI generated an unparseable JSON response."
+        return f"I'm sorry, I encountered an error: {e}"
 
-        # --- User Check and Tier Limits (REMOVED due to Firestore removal) ---
-        # For testing, we'll bypass these checks.
-        print(f"DEBUG: User ID '{user_id}' received. Bypassing premium checks and question limits for testing.")
+# --- Endpoints ---
+
+# NEW: Root endpoint for basic health check/info
+@app.route('/', methods=['GET'])
+def home():
+    """
+    A simple root endpoint to confirm the service is running.
+    """
+    return jsonify({"message": "CA Chatbot service is running!", "status": "OK"}), 200
 
 
-        # Initialize a base prompt for Gemini
-        base_system_instruction = """
-        You are a helpful, motivating, and friendly educational assistant. ✨
-        Provide answers in a clear, easy-to-understand numbered list format. Each point should be concise, ideally around 3-5 sentences, focusing on direct answers without excessive detail or jargon. Ensure each numbered point starts on a new line and is followed by a blank line before the next point, for clear separation. If a single point is sufficient, provide it directly without a list.
-        Maintain a positive and encouraging tone! 😊 Use a maximum of one relevant emoji per response, only where truly relevant and enhancing the message.
-        """
+@app.route('/test_qdrant', methods=['GET'])
+async def test_qdrant():
+    """
+    Tests Qdrant connection and lists all collections, checking for the expected one.
+    """
+    if qdrant_client is None:
+        return jsonify({"error": "Qdrant client not initialized."}), 500
+    try:
+        collections = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: qdrant_client.get_collections()
+        )
+        collection_names = [c.name for c in collections.collections]
 
-        try:
-            condensed_question = question
-            if chat_history:
-                recent_history_for_condensing = chat_history[-4:]
+        found_expected_collection = QDRANT_COLLECTION_NAME in collection_names
 
-                conversation_context_str = ""
-                for turn in recent_history_for_condensing:
-                    role = "User" if turn["role"] == "user" else "Assistant"
-                    conversation_context_str += f"{role}: {turn['parts'][0]['text']}\n"
+        return jsonify({
+            "status": "Qdrant connection successful",
+            "found_collections": collection_names,
+            "expected_collection_exists": found_expected_collection,
+            "expected_collection_name": QDRANT_COLLECTION_NAME
+        }), 200
+    except Exception as e:
+        print(f"ERROR: Error testing Qdrant connection: {e}")
+        return jsonify({"error": f"Failed to connect to Qdrant or list collections: {e}"}), 500
 
-                condensing_prompt_parts = [
-                    {"role": "user", "parts": [{"text": f"""
+@app.route('/list_knowledge_base', methods=['GET'])
+async def list_knowledge_base():
+    """
+    Lists unique PDF sources (documents) from the Qdrant knowledge base.
+    """
+    if qdrant_client is None:
+        print("WARNING: Qdrant client not initialized.")
+        return jsonify({"error": "Knowledge base not initialized"}), 500
+
+    try:
+        # Get count of documents in the collection
+        count_result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: qdrant_client.count(collection_name=QDRANT_COLLECTION_NAME, exact=True)
+        )
+        doc_count = count_result.count
+        print(f"DEBUG: list_knowledge_base: Current document count in Qdrant: {doc_count}")
+
+        if doc_count == 0:
+            print("DEBUG: list_knowledge_base: No documents found in Qdrant.")
+            return jsonify({"uploaded_pdfs": []}), 200
+
+        # Scroll through all points to get their metadata (source)
+        # Use a large limit to get all, or paginate if collection is very large
+        all_points = []
+        offset = None
+        while True:
+            scroll_result, next_page_offset = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: qdrant_client.scroll(
+                    collection_name=QDRANT_COLLECTION_NAME,
+                    limit=100, # Adjust limit as needed
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False
+                )
+            )
+            all_points.extend(scroll_result)
+            if next_page_offset is None:
+                break
+            offset = next_page_offset
+
+        unique_sources = set()
+        for point in all_points:
+            if point.payload and 'source' in point.payload:
+                unique_sources.add(point.payload['source'])
+
+        print(f"DEBUG: list_knowledge_base: Found {len(unique_sources)} unique PDF sources.")
+        return jsonify({"uploaded_pdfs": sorted(list(unique_sources))}), 200
+
+    except Exception as e:
+        print(f"ERROR: Error listing knowledge base from Qdrant: {e}")
+        return jsonify({"error": f"Failed to list knowledge base: {e}"}), 500
+
+# --- User status and chat history helpers (REMOVED due to Firestore removal) ---
+# @app.route('/get_user_status/<user_id>', methods=['GET'])
+# async def get_user_status_endpoint(user_id):
+#     # For testing without Firestore, always return a default success
+#     return jsonify({
+#         "isPremium": True, # Assume premium for testing functionality
+#         "questionsUsedFreeTier": 0,
+#         "questionsRemainingPremium": 500 # Plenty of questions
+#     }), 200
+
+# async def update_question_counts(user_id, is_premium, current_free_used, current_premium_remaining):
+#     print(f"DEBUG: Question counts would have been updated for user {user_id} if Firestore was enabled.")
+
+# async def save_chat_history(user_id, user_message, bot_response, ca_level):
+#     print(f"DEBUG: Chat history for user {user_id} would have been saved if Firestore was enabled.")
+
+@app.route('/ask_bot', methods=['POST'])
+async def ask_bot():
+    data = request.get_json()
+    # FIXED: Changed 'text' to 'question' to match frontend payload
+    question = data.get('question')
+    chat_history = data.get('chat_history', []) # Get chat history from frontend
+    user_id = data.get('user_id', None) # Get user_id from frontend (now just for logging, not auth/limits)
+    ca_level = data.get('ca_level', 'Unspecified') # Get selected CA level from frontend
+
+    if not question:
+        return jsonify({"error": "No question provided"}), 400
+
+    # --- User Check and Tier Limits (REMOVED due to Firestore removal) ---
+    # For testing, we'll bypass these checks.
+    print(f"DEBUG: User ID '{user_id}' received. Bypassing premium checks and question limits for testing.")
+
+
+    # Initialize a base prompt for Gemini
+    base_system_instruction = """
+    You are a helpful, motivating, and friendly educational assistant. ✨
+    Provide answers in a clear, easy-to-understand numbered list format. Each point should be concise, ideally around 3-5 sentences, focusing on direct answers without excessive detail or jargon. Ensure each numbered point starts on a new line and is followed by a blank line before the next point, for clear separation. If a single point is sufficient, provide it directly without a list.
+    Maintain a positive and encouraging tone! 😊 Use a maximum of one relevant emoji per response, only where truly relevant and enhancing the message.
+    """
+
+    try:
+        condensed_question = question
+        if chat_history:
+            recent_history_for_condensing = chat_history[-4:]
+
+            conversation_context_str = ""
+            for turn in recent_history_for_condensing:
+                role = "User" if turn["role"] == "user" else "Assistant"
+                conversation_context_str += f"{role}: {turn['parts'][0]['text']}\n"
+
+            condensing_prompt_parts = [
+                {"role": "user", "parts": [{"text": f"""
     You are a question rewriter. Your goal is to take the latest user question and, using the provided conversation history, rephrase it into a single, standalone question. This rephrased question must be completely clear and self-contained, meaning it can be understood without any prior context from this conversation.
 
     If the latest question uses pronouns (like 'it', 'this', 'they', 'them') or refers implicitly to something from the conversation, resolve these references to the specific topic or entity discussed in the immediately preceding turns.
@@ -706,4 +703,3 @@ from dotenv import load_dotenv
     # This block is only for local development.
     # if __name__ == '__main__':
     #     app.run(debug=True, port=5000)
-    
