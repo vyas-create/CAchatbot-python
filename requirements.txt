@@ -8,4 +8,3 @@ setuptools
 wheel # Added to ensure wheel building capabilities
 grpcio==1.63.0 # Updated to latest stable version
 grpcio-tools==1.63.0 # Explicitly added and pinned to latest stable version
-# python-dotenv==1.0.0 # Removed, as it's not needed for Render deployment
