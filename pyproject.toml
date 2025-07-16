@@ -1,0 +1,61 @@
+[tool.poetry]
+name = "ca-chatbot-python"
+version = "0.1.0"
+description = "A Python chatbot project for CA students, providing intelligent answers."
+authors = ["Your Name <your.email@example.com>"] # CHANGE THIS to your name and email
+readme = "README.md"
+packages = [{include = "app.py"}] # This tells Poetry that app.py is part of your main package/module.
+                                  # If your Flask app was inside a folder like 'src/app_package',
+                                  # it would be: packages = [{include = "app_package", from = "src"}]
+                                  # For a single app.py in the root, 'include = "app.py"' works.
+
+[tool.poetry.dependencies]
+python = "3.10.13" # Match your runtime.txt Python version
+
+# Core dependencies from your requirements.txt 
+Flask = "2.3.3"
+Flask-Cors = "3.0.10"
+google-generativeai = "0.8.5"
+razorpay = "1.3.0"
+qdrant-client = "1.8.0"
+gunicorn = "21.2.0"
+
+# grpcio and grpcio-tools are tricky.
+# 1.63.0 is a bit older, but should be fine for Python 3.10.
+# We'll explicitly pin Cython as a direct dependency for robustness.
+# Poetry automatically handles setuptools/wheel for its build-backend.
+grpcio = "1.63.0"
+grpcio-tools = "1.63.0"
+Cython = "0.29.36" # This version is specifically chosen for grpcio 1.63.0 compatibility with Python 3.10.
+                   # Cython 3.x is for Python 3.13+, so 0.29.x is correct for 3.10.
+
+# Add python-dotenv if you're using it locally, even if not needed for Render env vars.
+python-dotenv = "1.0.0" # You commented it out in requirements.txt, but it's imported in app.py. 
+                        # If you are not using it at all, remove the import from app.py.
+                        # If you are using it locally, keep it here.
+
+[tool.poetry.group.dev.dependencies]
+# Basic development dependencies
+pytest = "^7.0" # Example, you can choose specific versions
+black = "^23.0" # Example
+ruff = "^0.0.292" # Example
+isort = "^5.0" # Example
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+# Optional: Tool-specific configurations (adjust as needed)
+[tool.black]
+line-length = 88
+target-version = ['py310'] # Match your Python version
+
+[tool.ruff]
+# Enable rules (example: E for pycodestyle, F for pyflakes, I for isort)
+select = ["E", "F", "I"]
+ignore = ["E501"] # Ignore line length checks if black handles it
+line-length = 88
+target-version = "py310" # Match your Python version
+
+[tool.isort]
+profile = "black"
