@@ -114,6 +114,15 @@ async def get_gemini_response(prompt_parts, response_mime_type="text/plain"):
 
 # --- Endpoints ---
 
+# NEW: Root endpoint for basic health check/info
+@app.route('/', methods=['GET'])
+def home():
+    """
+    A simple root endpoint to confirm the service is running.
+    """
+    return jsonify({"message": "CA Chatbot service is running!", "status": "OK"}), 200
+
+
 @app.route('/test_qdrant', methods=['GET'])
 async def test_qdrant():
     """
@@ -127,9 +136,9 @@ async def test_qdrant():
             lambda: qdrant_client.get_collections()
         )
         collection_names = [c.name for c in collections.collections]
-        
+
         found_expected_collection = QDRANT_COLLECTION_NAME in collection_names
-        
+
         return jsonify({
             "status": "Qdrant connection successful",
             "found_collections": collection_names,
@@ -186,12 +195,12 @@ async def list_knowledge_base():
         for point in all_points:
             if point.payload and 'source' in point.payload:
                 unique_sources.add(point.payload['source'])
-            
+
         print(f"DEBUG: list_knowledge_base: Found {len(unique_sources)} unique PDF sources.")
         return jsonify({"uploaded_pdfs": sorted(list(unique_sources))}), 200
 
     except Exception as e:
-        print(f"ERROR: Error listing knowledge base from Qdrant: {e}") 
+        print(f"ERROR: Error listing knowledge base from Qdrant: {e}")
         return jsonify({"error": f"Failed to list knowledge base: {e}"}), 500
 
 # --- User status and chat history helpers (REMOVED due to Firestore removal) ---
@@ -278,7 +287,7 @@ Rephrased Question:
             motivation_prompt = f"""
             You are a highly empathetic and strategic motivational coach specifically for CA students.
             The user is asking for motivation or study strategy. Provide encouraging words and practical advice tailored to the unique challenges of CA exams (e.g., long hours, vast syllabus, exam pressure, importance of consistency, dealing with setbacks).
-            
+
             User's original question: "{question}"
             """
             final_motivation_prompt = motivation_prompt
@@ -286,7 +295,7 @@ Rephrased Question:
             full_conversation_contents = [{"role": "user", "parts": [{"text": base_system_instruction}]},
                                           {"role": "user", "parts": [{"text": final_motivation_prompt}]}]
             bot_response = await get_gemini_response(full_conversation_contents)
-            
+
             # Save motivation response to chat history (REMOVED)
             # if user_id:
             #     await save_chat_history(user_id, question, bot_response, ca_level)
@@ -350,7 +359,7 @@ Rephrased Question:
                     with_vectors=False # Don't need vectors back
                 )
             )
-            
+
             # Handle potential tuple wrapping from run_in_executor
             if isinstance(search_results_raw, tuple) and len(search_results_raw) > 0 and isinstance(search_results_raw[0], list):
                 search_results = search_results_raw[0]
@@ -366,9 +375,9 @@ Rephrased Question:
                 for point in search_results:
                     if point.payload and 'document' in point.payload:
                         filtered_documents.append(point.payload['document'])
-                
+
                 relevant_context = "\n\n".join(filtered_documents)
-                
+
                 if not relevant_context and ca_level != 'Unspecified':
                     print(f"DEBUG: No specific context found for {ca_level}. Attempting general RAG fallback.")
                     fallback_results_raw = await asyncio.get_event_loop().run_in_executor(
@@ -431,9 +440,9 @@ Rephrased Question:
         6.  For all other questions (non-technical, non-tabular, non-simplification requests), follow the standard numbered list format as per your base system instruction.
         """
         full_conversation_contents.append({"role": "user", "parts": [{"text": main_answer_prompt}]})
-        
+
         bot_response = await get_gemini_response(full_conversation_contents)
-        
+
         # Save the interaction to chat history (REMOVED)
         # if user_id:
         #     await save_chat_history(user_id, question, bot_response, ca_level)
@@ -468,7 +477,7 @@ async def extract_syllabus_structure():
 
     if not filename_to_extract:
         return jsonify({"error": f"Invalid CA level '{ca_level}' for syllabus extraction."}), 400
-    
+
     if qdrant_client is None:
         return jsonify({"error": "Knowledge base not initialized. Please upload syllabus PDFs first."}), 500
 
@@ -510,7 +519,7 @@ async def extract_syllabus_structure():
 
     extraction_prompt = f"""
     You are an expert in CA syllabus structure. Your task is to extract the subjects and their respective chapters/topics from the following CA syllabus text.
-    
+
     Format the output strictly as a JSON array of objects, where each object represents a subject and contains its name and an array of its chapters/topics.
 
     Example Output Format:
@@ -538,12 +547,12 @@ async def extract_syllabus_structure():
     {syllabus_text}
     \"\"\"
     """
-    
+
     full_conversation_contents = [{"role": "user", "parts": [{"text": extraction_prompt}]}]
 
     try:
         structured_syllabus = await get_gemini_response(full_conversation_contents, response_mime_type="application/json")
-        
+
         if isinstance(structured_syllabus, str) and structured_syllabus.startswith("AI_JSON_PARSE_ERROR"):
             print(f"ERROR: Backend JSON parsing failed for AI response: {structured_syllabus}")
             return jsonify({"error": "AI response could not be parsed as valid JSON. This might be due to unexpected formatting from the AI. Please try again or check PDF content clarity."}), 500
