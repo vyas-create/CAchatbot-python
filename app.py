@@ -208,7 +208,7 @@ async def list_knowledge_base():
     """
     Lists unique PDF sources (documents) from the Qdrant knowledge base.
     """
-    if qdrant_client is None:
+    if qdrant_client is None: # Changed from === to is None for Pythonic check
         print("WARNING: Qdrant client not initialized.")
         return jsonify({"error": "Knowledge base not initialized"}), 500
 
@@ -481,7 +481,7 @@ async def ask_bot():
 
             **Instructions for your response:**
             1.  **Prioritize the provided 'Context from documents'** if it contains the answer. If the answer is not found in the context, use your general knowledge. **Never explicitly state that information was not found in documents or that you are using general knowledge.** Always try to provide a helpful answer.
-            2.  **Tailor your response to the 'Current CA Level Selected'.** Use examples, depth, and terminology appropriate for that level.
+            2.  **Tailor your response to the 'Current CA Level Selected'.** Use examples, depth and terminology appropriate for that level.
             3.  **For technical answers** (e.g., definitions, accounting standards (AS), auditing standards (SA), tax laws, sections of Companies Act, specific formulas, legal provisions, or direct questions about ICAI guidelines):
                 * **Incorporate "ICAI" keywords naturally** where appropriate (e.g., "As per ICAI guidelines...", "According to ICAI standards...", "The ICAI pronouncements state...").
                 * **Conclude the technical answer with a clear statement:** "Please note: This response is tuned as per ICAI guidelines."
