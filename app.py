@@ -436,9 +436,8 @@ Rephrased Question:
             * **Conclude the technical answer with a clear statement:** "Please note: This response is tuned as per ICAI guidelines."
             * **For "difficult problems" or "sums"**: Provide clear, step-by-step solutions. If a numerical problem, present the solution methodically.
         4.  If the question is a **follow-up requesting a simpler explanation** of a previous concept (e.g., "in simpler terms", "explain it easily", "can you simplify that?"), then **do NOT include the "tuned as per ICAI guidelines" statement.** Provide a general, easy-to-understand explanation.
-        5.  **For requests requiring tabular presentation** (e.g., "show journal entry for...", "prepare ledger for...", "present final accounts of...", "calculate tax for...", "list differences between X and Y in a table"):
-            * **CRITICAL: Format the entire response as a Markdown table.** Ensure clear headers and appropriate columns.
-            * **IMPORTANT: Immediately following the table, provide a short, concise note (1-2 sentences) explaining the entry or sum.**
+        5.  **IMPORTANT: If the user explicitly asks for a table (e.g., "show journal entry for...", "prepare ledger for...", "present final accounts of...", "calculate tax for...", "list differences between X and Y in a table"), then you MUST FORMAT THE ENTIRE RESPONSE AS A MARKDOWN TABLE. Ensure clear headers and appropriate columns. DO NOT provide any introductory or concluding sentences outside the table and its immediate explanation.**
+            * Immediately following the table, provide a short, concise note (1-2 sentences) explaining the entry or sum.
             * Do not provide a numbered list if a table is requested.
             * If the request is for a "sum" or "problem" that is not inherently tabular (e.g., a long calculation), provide the solution clearly in a tabular format if applicable, or step-by-step if not.
         6.  For all other questions (non-technical, non-tabular, non-simplification requests), follow the standard numbered list format as per your base system instruction.
@@ -636,7 +635,7 @@ async def verify_razorpay_payment():
         return jsonify({"success": False, "error": "Payment signature verification failed."}), 400
     except Exception as e:
         print(f"ERROR: Error verifying payment or updating (skipped) Firestore for user {user_id}: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"error": f"An error occurred: {e}"}), 500
 
 # --- Custom Authentication Endpoints (REMOVED due to Firestore removal) ---
 # @app.route('/custom_signup', methods=['POST'])
