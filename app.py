@@ -437,7 +437,7 @@ Rephrased Question:
         main_answer_prompt = f"""
         **Answer the user's question to the best of your ability.**
 
-        **CRITICAL: If the user explicitly asks for a table (e.g., "show journal entry for...", "prepare ledger for...", "present final accounts of...", "calculate tax for...", "list differences between X and Y in a table"), then you MUST FORMAT THE ENTIRE RESPONSE AS A MARKDOWN TABLE. Ensure clear headers and appropriate columns. DO NOT provide any introductory or concluding sentences outside the table and its immediate explanation.**
+        **CRITICAL: If the user explicitly asks for a table using keywords like "journal entry", "ledger", "trial balance", "balance sheet", "profit and loss account", "cash flow statement", "financial statements", "differences between", "comparison of", "calculate", "computation", "schedule", "statement", or any explicit request for a tabular presentation, then you MUST FORMAT THE ENTIRE RESPONSE AS A MARKDOWN TABLE. Ensure clear headers, appropriate columns, and numerical precision where applicable. DO NOT provide any introductory or concluding sentences outside the table and its immediate explanation.**
 
         **Current CA Level Selected:** {ca_level if ca_level != 'Unspecified' else 'All Levels'}
 
