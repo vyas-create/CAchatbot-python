@@ -342,14 +342,6 @@ Rephrased Question:
 
             return jsonify({"answer": bot_response})
 
-        schedule_keywords = ["schedule", "timetable", "plan", "study plan", "syllabus"]
-        is_schedule_request = any(keyword in question.lower() for keyword in schedule_keywords)
-
-        if is_schedule_request:
-            print("DEBUG: Detected schedule request. Replying with 'coming soon' message.")
-            bot_response = "The personalized study planner and syllabus completion tracker are coming soon! ✨"
-            return jsonify({"answer": bot_response})
-
         question_embedding = await get_embedding(condensed_question)
         if not question_embedding:
             return jsonify({"error": "Could not generate embedding for the question."}), 500
