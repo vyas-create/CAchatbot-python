@@ -44,10 +44,9 @@ else:
     print("WARNING: Razorpay keys not found. Payment functionality will be disabled.")
 
 # Qdrant Configuration
-QDRANT_URL = "https://d8ce58a7-9c1b-4952-8b2d-5e8de1a30ddf.europe-west3-0.gcp.cloud.qdrant.io:6333"
-QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.6UOzQET7_YLGn5VG2E72G8pPExZmU8DqXDe6VH3xxyY"
-QDRANT_COLLECTION_NAME = "ca_chatbot_knowledge" # Updated to your confirmed collection name
-
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+QDRANT_COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "ca_chatbot_knowledge") 
 qdrant_client = None
 
 # Synchronous function to ensure Qdrant setup (collection and index)
