@@ -150,29 +150,36 @@ async def get_embedding(text):
         return None
 
 async def get_gemini_response(prompt_parts, response_mime_type="text/plain"):
-    """Gets a response from the Gemini model."""
     if not GEMINI_API_KEY:
         return "I'm sorry, the AI assistant is not configured. Please check API keys."
+
     try:
+        generation_config = {
+            "response_mime_type": response_mime_type,
+            "temperature": 0.7,
+            "top_p": 1,
+            "max_output_tokens": 5000  
+        }
+
         model = genai.GenerativeModel(
             model_name="gemini-1.5-flash",
-            generation_config={"response_mime_type": response_mime_type}
+            generation_config=generation_config
         )
-        response = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: model.generate_content(prompt_parts)
-        )
-        if response.candidates and response.candidates[0].content.parts:
+
+        # Important: Use async support if available, avoid blocking run_in_executor
+        response = model.generate_content(prompt_parts)
+
+        if response and response.candidates and response.candidates[0].content.parts:
             return response.candidates[0].content.parts[0].text
         else:
             print(f"WARNING: Gemini response had no text content: {response}")
             return "I'm sorry, I couldn't generate a response."
+
     except Exception as e:
         print(f"ERROR: Error getting Gemini response: {e}")
         if "JSON" in str(e) and "parse" in str(e):
             return "AI_JSON_PARSE_ERROR: The AI generated an unparseable JSON response."
         return f"I'm sorry, I encountered an error: {e}"
-
 # --- Endpoints ---
 
 @app.route('/', methods=['GET'])
