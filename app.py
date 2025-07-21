@@ -86,12 +86,20 @@ def ensure_qdrant_setup_sync():
 
         print(f"INFO: Qdrant collection '{QDRANT_COLLECTION_NAME}' exists.")
 
-        # 2. Check if 'source' index exists. If not, log a warning, but don't try to create it.
+        # 2. Check if 'source' index exists using get_collection and its payload_schema
         try:
-            indexes_response = loop.run_until_complete(
-                loop.run_in_executor(None, lambda: qdrant_client.list_payload_indexes(collection_name=QDRANT_COLLECTION_NAME))
+            collection_info = loop.run_until_complete(
+                loop.run_in_executor(None, lambda: qdrant_client.get_collection(collection_name=QDRANT_COLLECTION_NAME))
             )
-            source_index_exists = any(idx.field_name == "source" and idx.field_schema == "keyword" for idx in indexes_response.indexes)
+            
+            # Check if payload_schema exists and if 'source' is in it
+            source_index_exists = False
+            if collection_info.config and collection_info.config.payload_schema:
+                # Iterate through the payload_schema to find the 'source' field
+                for field_name, field_schema in collection_info.config.payload_schema.items():
+                    if field_name == "source" and field_schema.field_type == models.PayloadSchemaType.KEYWORD:
+                        source_index_exists = True
+                        break
 
             if not source_index_exists:
                 print(f"WARNING: 'source' keyword index not found for collection '{QDRANT_COLLECTION_NAME}'. "
@@ -101,7 +109,7 @@ def ensure_qdrant_setup_sync():
                 print(f"INFO: 'source' keyword index already exists for collection '{QDRANT_COLLECTION_NAME}'.")
 
         except Exception as e:
-            # This catch handles issues specifically with listing/checking indexes, e.g., if collection exists but has issues
+            # This catch handles issues specifically with getting collection info or checking indexes
             print(f"WARNING: Could not check 'source' payload index for collection '{QDRANT_COLLECTION_NAME}': {e}. "
                   "Ensure the collection is accessible and the index is present.")
             # Continue, as the main collection existence check passed.
