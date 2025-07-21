@@ -10,6 +10,7 @@ from flask_cors import CORS # Ensure CORS is imported
 import google.generativeai as genai
 import razorpay
 from qdrant_client import QdrantClient, models
+from pydantic import ValidationError # Import ValidationError for specific error handling
 
 # --- Configuration ---
 # Flask App
@@ -92,14 +93,23 @@ def ensure_qdrant_setup_sync():
                 loop.run_in_executor(None, lambda: qdrant_client.get_collection(collection_name=QDRANT_COLLECTION_NAME))
             )
             
-            # Check if payload_schema exists and if 'source' is in it
             source_index_exists = False
-            if collection_info.config and collection_info.config.payload_schema:
-                # Iterate through the payload_schema to find the 'source' field
-                for field_name, field_schema in collection_info.config.payload_schema.items():
-                    if field_name == "source" and field_schema.field_type == models.PayloadSchemaType.KEYWORD:
+            # In newer Qdrant client versions, payload_schema might be under collection_info.config.params.field_indexes
+            # Let's try to be robust.
+            if collection_info.config and collection_info.config.params and collection_info.config.params.field_indexes:
+                # field_indexes is a dict where keys are field names and values are FieldIndexInfo
+                if "source" in collection_info.config.params.field_indexes:
+                    # Check if it's a keyword type, as expected
+                    field_index_info = collection_info.config.params.field_indexes["source"]
+                    if hasattr(field_index_info, 'field_type') and field_index_info.field_type == models.PayloadSchemaType.KEYWORD:
                         source_index_exists = True
-                        break
+                    elif hasattr(field_index_info, 'keyword_index_params'): # Older versions might use specific params
+                        source_index_exists = True # Presence of keyword_index_params implies it's a keyword index
+            elif collection_info.config and collection_info.config.payload_schema: # Fallback for older schema
+                if "source" in collection_info.config.payload_schema:
+                    # For older schema, payload_schema directly maps field name to PayloadSchemaType
+                    if collection_info.config.payload_schema["source"] == models.PayloadSchemaType.KEYWORD:
+                        source_index_exists = True
 
             if not source_index_exists:
                 print(f"WARNING: 'source' keyword index not found for collection '{QDRANT_COLLECTION_NAME}'. "
@@ -108,8 +118,15 @@ def ensure_qdrant_setup_sync():
             else:
                 print(f"INFO: 'source' keyword index already exists for collection '{QDRANT_COLLECTION_NAME}'.")
 
+        except ValidationError as ve:
+            # Catch Pydantic validation errors specifically
+            print(f"WARNING: Pydantic validation error when checking 'source' payload index for collection '{QDRANT_COLLECTION_NAME}': {ve}. "
+                  "This might be due to an unexpected status value (e.g., 'grey') from Qdrant Cloud. "
+                  "The collection itself exists, but its status could not be fully parsed. "
+                  "Please ensure the 'source' index is created and functional.")
+            # Continue, as the main collection existence check passed.
         except Exception as e:
-            # This catch handles issues specifically with getting collection info or checking indexes
+            # Catch other general exceptions during index check
             print(f"WARNING: Could not check 'source' payload index for collection '{QDRANT_COLLECTION_NAME}': {e}. "
                   "Ensure the collection is accessible and the index is present.")
             # Continue, as the main collection existence check passed.
@@ -388,7 +405,7 @@ Rephrased Question:
                     if isinstance(fallback_results_raw, tuple) and len(fallback_results_raw) > 0 and isinstance(fallback_results_raw[0], list):
                         fallback_results = fallback_results_raw[0]
                     elif isinstance(fallback_results_raw, list):
-                        fallback_results = fallback_results_raw
+                        fallback_results = fallback_results
                     else:
                         print(f"WARNING: Unexpected type for Qdrant fallback results: {type(fallback_results_raw)}. Defaulting to empty list.")
                         fallback_results = []
