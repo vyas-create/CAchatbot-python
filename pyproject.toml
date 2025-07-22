@@ -9,11 +9,7 @@ packages = [{include = "app.py"}] # This tells Poetry that app.py is part of you
                                   # it would be: packages = [{include = "app_package", from = "src"}]
                                   # For a single app.py in the root, 'include = "app.py"' works.
 
-[tool.poetry.dependencies]
-python = "3.10.13" # Match your runtime.txt Python version
-
-# Core dependencies from your requirements.txt
-# FIXED: Changed Flask[async] syntax to Poetry's extras format
+[tool.poetry.dependencies]python = "^3.10"
 Flask = { version = "2.3.3", extras = ["async"] }
 Flask-Cors = "3.0.10"
 google-generativeai = ">=0.7.0,<1.0.0"
