@@ -16,7 +16,7 @@ python = "3.10.13" # Match your runtime.txt Python version
 # FIXED: Changed Flask[async] syntax to Poetry's extras format
 Flask = { version = "2.3.3", extras = ["async"] }
 Flask-Cors = "3.0.10"
-google-generativeai = "0.8.5"
+google-generativeai = ">=0.7.0,<1.0.0"
 razorpay = "1.3.0"
 qdrant-client = "1.8.0"
 gunicorn = "21.2.0"
